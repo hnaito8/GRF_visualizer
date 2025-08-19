@@ -1,12 +1,8 @@
-# 改善メモ：
-# 1. 通常時を赤色のラインに
-# 2. 上から赤→橙→黄→緑に表示されるように
-
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Arduino床反力データ リアルタイム可視化アプリ
-メイン画面：リアルタイムデータ表示
+Arduino床反力データ パンチングマシン可視化アプリ
+メイン画面：リアルタイムデータ表示 + スコア表示
 別ウィンドウ：山検出時に過去3名分+ボルトデータと共に表示
 """
 
@@ -35,10 +31,13 @@ class DataReceiver(QObject):
 
     data_received = pyqtSignal(float, float)  # timestamp, force
 
-    def __init__(self, port="/dev/cu.usbmodem14101", baudrate=9600):
+    def __init__(
+        self, port="/dev/cu.usbmodem14101", baudrate=9600, force_multiplier=9.8
+    ):
         super().__init__()
         self.port = port
         self.baudrate = baudrate
+        self.force_multiplier = force_multiplier
         self.serial_conn = None
         self.running = False
         self.thread = None
@@ -82,7 +81,7 @@ class DataReceiver(QObject):
                         timestamp_str, force_str = line.split(",", 1)
                         timestamp = float(timestamp_str) / 1000.0  # ms -> s
                         force = float(force_str)
-                        force = force * 9.8  # kgからNへ
+                        force = force * self.force_multiplier  # 9.8倍に変換
                         self.data_received.emit(timestamp, force)
 
             except Exception as e:
@@ -116,6 +115,83 @@ class DataReceiver(QObject):
             time.sleep(0.01)  # 10ms間隔
 
 
+class PunchingScoreWidget(QWidget):
+    """パンチングマシンのスコア表示ウィジェット"""
+
+    def __init__(self):
+        super().__init__()
+        self.init_ui()
+        self.high_scores = []  # ハイスコア記録
+
+    def init_ui(self):
+        layout = QVBoxLayout()
+
+        # 大きなスコア表示
+        self.score_label = QLabel("0")
+        self.score_label.setFont(QFont("Arial", 72, QFont.Bold))
+        self.score_label.setAlignment(Qt.AlignCenter)
+        self.score_label.setStyleSheet(
+            "color: red; background: black; border: 3px solid yellow; padding: 20px;"
+        )
+        layout.addWidget(self.score_label)
+
+        # 評価コメント
+        self.comment_label = QLabel("パンチしてください！")
+        self.comment_label.setFont(QFont("Arial", 24, QFont.Bold))
+        self.comment_label.setAlignment(Qt.AlignCenter)
+        self.comment_label.setStyleSheet("color: orange; padding: 10px;")
+        layout.addWidget(self.comment_label)
+
+        # ハイスコア表示
+        self.high_score_label = QLabel("ハイスコア: 0")
+        self.high_score_label.setFont(QFont("Arial", 16))
+        self.high_score_label.setAlignment(Qt.AlignCenter)
+        self.high_score_label.setStyleSheet("color: white; padding: 10px;")
+        layout.addWidget(self.high_score_label)
+
+        self.setLayout(layout)
+
+    def update_score(self, max_force):
+        """スコア更新"""
+        score = int(max_force)
+        self.score_label.setText(str(score))
+
+        # 評価コメント
+        if score < 500:
+            comment = "もっと強く！💪"
+            color = "gray"
+        elif score < 1000:
+            comment = "まあまあ！👍"
+            color = "blue"
+        elif score < 2000:
+            comment = "いい感じ！🔥"
+            color = "orange"
+        elif score < 3000:
+            comment = "強い！⚡"
+            color = "red"
+        else:
+            comment = "最強！🏆"
+            color = "gold"
+
+        self.comment_label.setText(comment)
+        self.comment_label.setStyleSheet(f"color: {color}; padding: 10px;")
+
+        # ハイスコア更新
+        self.update_high_score(score)
+
+    def update_high_score(self, score):
+        """ハイスコア更新"""
+        self.high_scores.append(score)
+        self.high_scores.sort(reverse=True)
+        self.high_scores = self.high_scores[:5]  # トップ5のみ保持
+
+        high_score_text = f"ハイスコア: {self.high_scores[0]}"
+        if len(self.high_scores) > 1:
+            high_score_text += f"\nトップ5: {', '.join(map(str, self.high_scores))}"
+
+        self.high_score_label.setText(high_score_text)
+
+
 class MountainDisplayWindow(QMainWindow):
     """山検出時に表示される別ウィンドウ"""
 
@@ -127,7 +203,7 @@ class MountainDisplayWindow(QMainWindow):
 
     def init_ui(self):
         """UI初期化"""
-        self.setWindowTitle("山の波形表示")
+        self.setWindowTitle("パンチの波形表示")
         self.setGeometry(150, 150, 1000, 600)
 
         # 中央ウィジェット
@@ -136,7 +212,7 @@ class MountainDisplayWindow(QMainWindow):
         layout = QVBoxLayout()
 
         # タイトル
-        title = QLabel("検出された山の波形")
+        title = QLabel("🥊 検出されたパンチの波形 🥊")
         title.setFont(QFont("Arial", 16, QFont.Bold))
         title.setAlignment(Qt.AlignCenter)
         layout.addWidget(title)
@@ -173,9 +249,6 @@ class MountainDisplayWindow(QMainWindow):
             self.plot_widget.plot(
                 [], [], pen=pg.mkPen("yellow", width=2), name="Past 2 / 過去2名"
             ),  # 過去2
-            # self.plot_widget.plot(
-            #     [], [], pen=pg.mkPen("pink", width=2), name="Past 3 / 過去3名"
-            # ),  # 過去3
         ]
         self.bolt_line = self.plot_widget.plot(
             [], [], pen=pg.mkPen("g", width=3), name="Usain Bolt / ウサイン・ボルト"
@@ -304,7 +377,7 @@ class MountainDisplayWindow(QMainWindow):
 
         # ステータス更新
         self.status_label.setText(
-            f"山#{mountain_count}を検出しました（15秒後に自動で閉じます）"
+            f"パンチ#{mountain_count}を検出しました（15秒後に自動で閉じます）"
         )
 
         # 全ての波形を表示
@@ -389,7 +462,7 @@ class MountainDisplayWindow(QMainWindow):
 
 
 class RealtimeDisplayWidget(QWidget):
-    """リアルタイムデータ表示ウィジェット"""
+    """リアルタイムデータ表示ウィジェット（パンチングマシン版）"""
 
     mountain_detected = pyqtSignal(list)  # 山検出シグナル
 
@@ -400,32 +473,47 @@ class RealtimeDisplayWidget(QWidget):
 
     def init_ui(self):
         """UI初期化"""
-        layout = QVBoxLayout()
+        main_layout = QHBoxLayout()
+
+        # 左側：グラフ
+        left_layout = QVBoxLayout()
 
         # タイトル
-        title = QLabel("リアルタイム床反力データ")
-        title.setFont(QFont("Arial", 16, QFont.Bold))
+        title = QLabel("🥊 パンチングマシン 🥊")
+        title.setFont(QFont("Arial", 20, QFont.Bold))
         title.setAlignment(Qt.AlignCenter)
-        layout.addWidget(title)
+        title.setStyleSheet(
+            "color: red; background: black; border: 3px solid yellow; padding: 10px;"
+        )
+        left_layout.addWidget(title)
 
         # ステータス表示
-        self.status_label = QLabel("データ受信中...")
-        self.status_label.setFont(QFont("Arial", 12))
+        self.status_label = QLabel("パンチの準備をしてください...")
+        self.status_label.setFont(QFont("Arial", 14))
         self.status_label.setAlignment(Qt.AlignCenter)
-        layout.addWidget(self.status_label)
+        self.status_label.setStyleSheet("color: white; padding: 5px;")
+        left_layout.addWidget(self.status_label)
 
         # グラフ設定
         self.plot_widget = pg.PlotWidget()
-        self.plot_widget.setLabel("left", "力 [N]")
-        self.plot_widget.setLabel("bottom", "時間 [s]")
+        self.plot_widget.setLabel("left", "パンチ力 [N]", size="14pt")
+        self.plot_widget.setLabel("bottom", "時間 [s]", size="14pt")
         self.plot_widget.setYRange(0, 5500, padding=0)  # Y軸固定スケール
         self.plot_widget.showGrid(x=True, y=True)
+        self.plot_widget.setBackground("black")
 
-        # プロット線
-        self.plot_line = self.plot_widget.plot([], [], pen="b", width=2)
+        # カラフルなプロット線
+        self.plot_line = self.plot_widget.plot([], [], pen=pg.mkPen("cyan", width=3))
 
-        layout.addWidget(self.plot_widget)
-        self.setLayout(layout)
+        left_layout.addWidget(self.plot_widget)
+
+        # 右側：スコア表示
+        self.score_widget = PunchingScoreWidget()
+
+        main_layout.addLayout(left_layout, 2)  # 左側を2/3
+        main_layout.addWidget(self.score_widget, 1)  # 右側を1/3
+
+        self.setLayout(main_layout)
 
     def init_data(self):
         """データ管理初期化"""
@@ -448,57 +536,53 @@ class RealtimeDisplayWidget(QWidget):
         self.update_plot()
 
     def detect_mountain(self, timestamp, force):
-        """山の検出処理"""
+        """パンチ検出処理"""
         # 前回の値を取得
         prev_force = 0
         if len(self.data_buffer) >= 2:
             prev_force = self.data_buffer[-2][1]
 
-        # 山の開始検出: 0 → 正の値
-        if not self.in_mountain and prev_force <= 0 and force > 0:
+        # パンチの開始検出: 0 → 正の値
+        if not self.in_mountain and prev_force <= 100 and force > 100:  # 閾値を100Nに
             self.in_mountain = True
             self.current_mountain = [(timestamp, force)]
-            self.status_label.setText("山を検出中...")
+            self.status_label.setText("🔥 パンチ検出中... 🔥")
+            self.status_label.setStyleSheet(
+                "color: orange; font-weight: bold; padding: 5px;"
+            )
 
-        # 山の継続
-        elif self.in_mountain and force > 0:
+        # パンチの継続
+        elif self.in_mountain and force > 50:  # 継続の閾値を50Nに
             self.current_mountain.append((timestamp, force))
 
-        # 山の終了検出: 正の値 → 0
-        elif self.in_mountain and force <= 0:
+        # パンチの終了検出: 正の値 → 0
+        elif self.in_mountain and force <= 50:
             self.current_mountain.append((timestamp, force))
             self.in_mountain = False
 
-            # 15秒バッファーチェック
-            current_time = time.time()
-            if current_time - self.last_mountain_time >= 15.0:
-                # 山を検出した（15秒経過している場合のみ）
+            # パンチのスコア計算
+            if self.current_mountain:
+                max_force = max([data[1] for data in self.current_mountain])
+                self.score_widget.update_score(max_force)
+
                 self.mountain_count += 1
                 self.status_label.setText(
-                    f"山#{self.mountain_count}を検出！別ウィンドウで表示中..."
+                    f"🏆 パンチ#{self.mountain_count} 完了！スコア: {int(max_force)}"
+                )
+                self.status_label.setStyleSheet(
+                    "color: green; font-weight: bold; padding: 5px;"
                 )
 
                 # 山検出シグナル発火
                 self.mountain_detected.emit(self.current_mountain.copy())
 
-                # 最後の山表示時間を更新
-                self.last_mountain_time = current_time
-
                 # 3秒後にステータスを戻す
-                QTimer.singleShot(
-                    3000, lambda: self.status_label.setText("データ受信中...")
-                )
-            else:
-                # 15秒以内の場合は無視
-                remaining_time = 15.0 - (current_time - self.last_mountain_time)
-                self.status_label.setText(
-                    f"山を検出したが無視中（残り{remaining_time:.1f}秒）..."
-                )
+                QTimer.singleShot(3000, self.reset_status)
 
-                # 3秒後にステータスを戻す
-                QTimer.singleShot(
-                    3000, lambda: self.status_label.setText("データ受信中...")
-                )
+    def reset_status(self):
+        """ステータスをリセット"""
+        self.status_label.setText("次のパンチの準備をしてください...")
+        self.status_label.setStyleSheet("color: white; padding: 5px;")
 
     def update_plot(self):
         """グラフ描画更新"""
@@ -530,8 +614,8 @@ class MainWindow(QMainWindow):
 
     def init_ui(self):
         """UI初期化"""
-        self.setWindowTitle("Arduino床反力データ可視化システム（リアルタイム）")
-        self.setGeometry(100, 100, 1200, 800)
+        self.setWindowTitle("🥊 Arduino パンチングマシン システム 🥊")
+        self.setGeometry(100, 100, 1400, 800)
 
         # リアルタイム表示ウィジェット
         self.realtime_widget = RealtimeDisplayWidget()
@@ -545,7 +629,7 @@ class MainWindow(QMainWindow):
 
     def init_data_receiver(self):
         """データ受信機初期化"""
-        self.data_receiver = DataReceiver()
+        self.data_receiver = DataReceiver(force_multiplier=9.8)  # 9.8倍設定
         self.data_receiver.data_received.connect(self.realtime_widget.update_data)
 
         # リアルタイム更新タイマー
