@@ -1,3 +1,7 @@
+# 改善メモ：
+# 1. 通常時を赤色のラインに
+# 2. 上から赤→橙→黄→緑に表示されるように
+
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
@@ -99,10 +103,10 @@ class DataReceiver(QObject):
             if counter % 500 == 0:  # 5秒に1回山を生成
                 mountain_phase = 0
 
-            if counter % 500 < 15:  # 5秒周期で最初の0.3秒間だけ山を描画
+            if counter % 500 < 10:  # 5秒周期で最初の0.1秒間だけ山を描画
                 # 山の中での位置を計算（0から29まで）
                 mountain_position = counter % 500  # 500周期の中での位置
-                force = 2500 * math.sin(math.pi * mountain_position / 15)
+                force = 2500 * math.sin(math.pi * mountain_position / 10)
             else:
                 force = 0
 
@@ -154,16 +158,27 @@ class MountainDisplayWindow(QMainWindow):
         self.plot_widget.setLabel("bottom", "時間 [s]")
         self.plot_widget.showGrid(x=True, y=True)
 
+        # 凡例を先に追加
+        self.plot_widget.addLegend(labelTextSize="10pt")
+
         # プロット線（現在 + 過去3名分 + ボルト）
         self.current_line = self.plot_widget.plot(
-            [], [], pen="r", width=3
+            [], [], pen=pg.mkPen("r", width=3), name="Current / 現在の測定"
         )  # 現在の測定
         self.past_lines = [
-            self.plot_widget.plot([], [], pen="orange", width=2),  # 過去1
-            self.plot_widget.plot([], [], pen="yellow", width=2),  # 過去2
-            self.plot_widget.plot([], [], pen="pink", width=2),  # 過去3
+            self.plot_widget.plot(
+                [], [], pen=pg.mkPen("orange", width=2), name="Past 1 / 過去1名"
+            ),  # 過去1
+            self.plot_widget.plot(
+                [], [], pen=pg.mkPen("yellow", width=2), name="Past 2 / 過去2名"
+            ),  # 過去2
+            # self.plot_widget.plot(
+            #     [], [], pen=pg.mkPen("pink", width=2), name="Past 3 / 過去3名"
+            # ),  # 過去3
         ]
-        self.bolt_line = self.plot_widget.plot([], [], pen="g", width=3)  # ボルト
+        self.bolt_line = self.plot_widget.plot(
+            [], [], pen=pg.mkPen("g", width=3), name="Usain Bolt / ウサイン・ボルト"
+        )  # ボルト
 
         layout.addWidget(self.plot_widget)
         central_widget.setLayout(layout)
@@ -323,9 +338,11 @@ class MountainDisplayWindow(QMainWindow):
                 normalized_times = [t - base_time for t in times]
                 self.past_lines[i].setData(normalized_times, forces)
 
-        # 残りの過去データ線をクリア
+        # 残りの過去データ線をクリア（空のデータでも凡例は残る）
         for i in range(len(self.past_mountains) - 1, len(self.past_lines)):
-            self.past_lines[i].setData([], [])
+            self.past_lines[i].setData(
+                [0], [0]
+            )  # 完全に空にすると凡例から消えるので、ダミー点を設定
 
         # ボルトのデータ
         if self.bolt_mountain:
