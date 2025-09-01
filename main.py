@@ -35,7 +35,7 @@ class DataReceiver(QObject):
 
     data_received = pyqtSignal(float, float)  # timestamp, force
 
-    def __init__(self, port="/dev/cu.usbmodem14101", baudrate=9600):
+    def __init__(self, port="/dev/cu.usbmodem14301", baudrate=9600):
         super().__init__()
         self.port = port
         self.baudrate = baudrate
