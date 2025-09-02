@@ -1,3 +1,7 @@
+# 改善メモ：
+# 1. 通常時を赤色のラインに
+# 2. 上から赤→橙→黄→緑に表示されるように
+
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
@@ -31,7 +35,7 @@ class DataReceiver(QObject):
 
     data_received = pyqtSignal(float, float)  # timestamp, force
 
-    def __init__(self, port="/dev/cu.usbmodem14201", baudrate=9600):
+    def __init__(self, port="/dev/cu.usbmodem14301", baudrate=9600):
         super().__init__()
         self.port = port
         self.baudrate = baudrate
@@ -78,6 +82,7 @@ class DataReceiver(QObject):
                         timestamp_str, force_str = line.split(",", 1)
                         timestamp = float(timestamp_str) / 1000.0  # ms -> s
                         force = float(force_str)
+                        force = force * 9.8  # kgからNへ
                         self.data_received.emit(timestamp, force)
 
             except Exception as e:
