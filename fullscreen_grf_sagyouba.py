@@ -457,7 +457,7 @@ class RealtimeDisplayWidget(QFrame):
         """UI初期化"""
         # 青色の枠線設定
         self.setStyleSheet(
-            "QFrame { border: 3px solid #2E86AB; background-color: black; }"
+            "QFrame { border: 4px solid #2E86AB; background-color: black; }"
         )
 
         layout = QVBoxLayout()
@@ -553,7 +553,10 @@ class RealtimeDisplayWidget(QFrame):
 
                 # 3秒後にステータスを戻す
                 QTimer.singleShot(
-                    3000, lambda: self.status_label.setText("データ受信中...")
+                    3000,
+                    lambda: self.status_label.setText(
+                        "データ受信中... / Receiving Data"
+                    ),
                 )
             else:
                 # 1秒以内の場合は無視
