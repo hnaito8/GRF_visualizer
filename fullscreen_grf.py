@@ -34,7 +34,7 @@ class DataReceiver(QObject):
 
     data_received = pyqtSignal(float, float)  # timestamp, force
 
-    def __init__(self, port="/dev/cu.usbmodem14301", baudrate=9600):
+    def __init__(self, port="/dev/cu.usbmodem14201", baudrate=9600):
         super().__init__()
         self.port = port
         self.baudrate = baudrate
@@ -214,7 +214,7 @@ class PastWaveformsWidget(QFrame):
         layout = QVBoxLayout()
 
         # タイトル
-        title = QLabel("過去3回の波形 / Past 3 Waveforms")
+        title = QLabel("波形 / Waveforms")
         title.setFont(QFont("Arial", 24, QFont.Bold))
         title.setAlignment(Qt.AlignCenter)
         title.setStyleSheet("color: #2E86AB; border: none; margin: 10px;")
@@ -378,9 +378,8 @@ class PastWaveformsWidget(QFrame):
             # 新しい山データを先頭に追加
             self.past_mountains.insert(0, mountain_data.copy())
 
-            # 3つより多い場合は古いものを削除
-            if len(self.past_mountains) > 3:
-                self.past_mountains.pop()
+            # 確実に3つまでに制限
+            self.past_mountains = self.past_mountains[:3]
 
             # 全ての波形を更新
             self.update_all_waveforms()
@@ -414,8 +413,8 @@ class PastWaveformsWidget(QFrame):
         all_times = []
         all_forces = []
 
-        # 過去の山データから時間と力を収集
-        for past_data in self.past_mountains:
+        # 過去の山データから時間と力を収集（最新の3つのみ）
+        for i, past_data in enumerate(self.past_mountains[:3]):  # 最新3つのみ
             if past_data:
                 times = [data[0] for data in past_data]
                 forces = [data[1] for data in past_data]
@@ -433,13 +432,17 @@ class PastWaveformsWidget(QFrame):
             all_forces.extend([data[1] for data in self.bolt_mountain])
 
         if all_times and all_forces:
-            time_margin = (max(all_times) - min(all_times)) * 0.1
-            force_margin = max(all_forces) * 0.1
+            # より安定した範囲設定
+            max_time = max(all_times)
+            max_force = max(all_forces)
 
-            self.plot_widget.setXRange(
-                min(all_times) - time_margin, max(all_times) + time_margin, padding=0
-            )
-            self.plot_widget.setYRange(0, max(all_forces) + force_margin, padding=0)
+            # 固定の範囲を設定（データに依存しすぎないように）
+            self.plot_widget.setXRange(0, max(0.12, max_time * 1.1), padding=0)
+            self.plot_widget.setYRange(0, max(5000, max_force * 1.1), padding=0)
+        else:
+            # デフォルト範囲
+            self.plot_widget.setXRange(0, 0.12, padding=0)
+            self.plot_widget.setYRange(0, 5000, padding=0)
 
 
 class RealtimeDisplayWidget(QFrame):
@@ -555,7 +558,7 @@ class RealtimeDisplayWidget(QFrame):
                 QTimer.singleShot(
                     3000,
                     lambda: self.status_label.setText(
-                        "データ受信中... / Receiving Data"
+                        "データ受信中... / Receiving Data..."
                     ),
                 )
             else:
